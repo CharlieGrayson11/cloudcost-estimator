@@ -10,6 +10,13 @@ terraform {
       version = "~> 3.85"
     }
   }
+
+  backend "azurerm" {
+    resource_group_name  = "cloudcost-rg"
+    storage_account_name = "tfstatecloudcost119"
+    container_name       = "tfstate"
+    key                  = "terraform.tfstate"
+  }
 }
 
 provider "azurerm" {
