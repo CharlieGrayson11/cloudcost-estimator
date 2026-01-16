@@ -9,20 +9,7 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.85"
     }
-    azuread = {
-      source  = "hashicorp/azuread"
-      version = "~> 2.47"
-    }
   }
-
-  # Backend configuration for state management
-  # Uncomment and configure for production use
-  # backend "azurerm" {
-  #   resource_group_name  = "tfstate-rg"
-  #   storage_account_name = "tfstateXXXXX"
-  #   container_name       = "tfstate"
-  #   key                  = "cloudcost.tfstate"
-  # }
 }
 
 provider "azurerm" {
@@ -33,51 +20,43 @@ provider "azurerm" {
   }
 }
 
-# Data source for current Azure configuration
-data "azurerm_client_config" "current" {}
-
 # Local values
 locals {
   common_tags = {
     Project     = var.project_name
     Environment = var.environment
     ManagedBy   = "Terraform"
-    Repository  = "cloudcost-estimator"
   }
+  # Use existing registry
+  acr_login_server = "cloudcostestimator119.azurecr.io"
 }
 
-# Resource Group
-resource "azurerm_resource_group" "main" {
-  name     = "${var.project_name}-${var.environment}-rg"
-  location = var.location
-  tags     = local.common_tags
+# Use existing Resource Group
+data "azurerm_resource_group" "main" {
+  name = "cloudcost-rg"
+}
+
+# Use existing Container Registry
+data "azurerm_container_registry" "main" {
+  name                = "cloudcostestimator119"
+  resource_group_name = "cloudcost-rg"
 }
 
 # Log Analytics Workspace for Container Apps
 resource "azurerm_log_analytics_workspace" "main" {
   name                = "${var.project_name}-${var.environment}-logs"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
+  location            = data.azurerm_resource_group.main.location
+  resource_group_name = data.azurerm_resource_group.main.name
   sku                 = "PerGB2018"
   retention_in_days   = 30
-  tags                = local.common_tags
-}
-
-# Container Registry
-resource "azurerm_container_registry" "main" {
-  name                = "${replace(var.project_name, "-", "")}${var.environment}acr"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  sku                 = "Basic"
-  admin_enabled       = true
   tags                = local.common_tags
 }
 
 # Container Apps Environment
 resource "azurerm_container_app_environment" "main" {
   name                       = "${var.project_name}-${var.environment}-env"
-  location                   = azurerm_resource_group.main.location
-  resource_group_name        = azurerm_resource_group.main.name
+  location                   = data.azurerm_resource_group.main.location
+  resource_group_name        = data.azurerm_resource_group.main.name
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
   tags                       = local.common_tags
 }
@@ -86,19 +65,19 @@ resource "azurerm_container_app_environment" "main" {
 resource "azurerm_container_app" "backend" {
   name                         = "${var.project_name}-backend"
   container_app_environment_id = azurerm_container_app_environment.main.id
-  resource_group_name          = azurerm_resource_group.main.name
+  resource_group_name          = data.azurerm_resource_group.main.name
   revision_mode                = "Single"
   tags                         = local.common_tags
 
   registry {
-    server               = azurerm_container_registry.main.login_server
-    username             = azurerm_container_registry.main.admin_username
+    server               = data.azurerm_container_registry.main.login_server
+    username             = data.azurerm_container_registry.main.admin_username
     password_secret_name = "registry-password"
   }
 
   secret {
     name  = "registry-password"
-    value = azurerm_container_registry.main.admin_password
+    value = data.azurerm_container_registry.main.admin_password
   }
 
   template {
@@ -107,7 +86,7 @@ resource "azurerm_container_app" "backend" {
 
     container {
       name   = "backend"
-      image  = "${azurerm_container_registry.main.login_server}/cloudcost-backend:${var.image_tag}"
+      image  = "${data.azurerm_container_registry.main.login_server}/cloudcost-backend:${var.image_tag}"
       cpu    = 0.25
       memory = "0.5Gi"
 
@@ -141,19 +120,19 @@ resource "azurerm_container_app" "backend" {
 resource "azurerm_container_app" "frontend" {
   name                         = "${var.project_name}-frontend"
   container_app_environment_id = azurerm_container_app_environment.main.id
-  resource_group_name          = azurerm_resource_group.main.name
+  resource_group_name          = data.azurerm_resource_group.main.name
   revision_mode                = "Single"
   tags                         = local.common_tags
 
   registry {
-    server               = azurerm_container_registry.main.login_server
-    username             = azurerm_container_registry.main.admin_username
+    server               = data.azurerm_container_registry.main.login_server
+    username             = data.azurerm_container_registry.main.admin_username
     password_secret_name = "registry-password"
   }
 
   secret {
     name  = "registry-password"
-    value = azurerm_container_registry.main.admin_password
+    value = data.azurerm_container_registry.main.admin_password
   }
 
   template {
@@ -162,7 +141,7 @@ resource "azurerm_container_app" "frontend" {
 
     container {
       name   = "frontend"
-      image  = "${azurerm_container_registry.main.login_server}/cloudcost-frontend:${var.image_tag}"
+      image  = "${data.azurerm_container_registry.main.login_server}/cloudcost-frontend:${var.image_tag}"
       cpu    = 0.25
       memory = "0.5Gi"
 
