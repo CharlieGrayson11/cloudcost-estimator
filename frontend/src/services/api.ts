@@ -2,15 +2,21 @@ import type {
   CloudProvider,
   ComputeSize,
   StorageType,
+  DatabaseType,
+  DatabaseTier,
   EstimateResponse,
   ComparisonResponse,
   ProvidersResponse,
   HealthResponse,
   FullEstimateRequest,
+  EstimatorFormState,
+  InstanceTypesResponse,
+  StorageServicesResponse,
+  DatabaseServicesResponse,
 } from '../types';
 
-// API base URL - uses proxy in development, direct URL in production
-const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '/api';
+// API base URL - uses environment variable or falls back to /api for nginx proxy
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -25,20 +31,27 @@ async function fetchApi<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
-    throw new ApiError(response.status, error.detail || `HTTP ${response.status}`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+      throw new ApiError(response.status, error.detail || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(500, 'Network error - please check your connection');
   }
-
-  return response.json();
 }
 
 // API Functions
@@ -48,6 +61,18 @@ export async function getHealth(): Promise<HealthResponse> {
 
 export async function getProviders(): Promise<ProvidersResponse> {
   return fetchApi<ProvidersResponse>('/providers');
+}
+
+export async function getInstanceTypes(): Promise<InstanceTypesResponse> {
+  return fetchApi<InstanceTypesResponse>('/instance-types');
+}
+
+export async function getStorageServices(): Promise<StorageServicesResponse> {
+  return fetchApi<StorageServicesResponse>('/storage-services');
+}
+
+export async function getDatabaseServices(): Promise<DatabaseServicesResponse> {
+  return fetchApi<DatabaseServicesResponse>('/database-services');
 }
 
 export async function getResourceTypes(): Promise<Record<string, unknown>> {
@@ -68,12 +93,18 @@ export async function compareProviders(params: {
   storage_gb?: number;
   storage_type?: StorageType;
   hours_per_month?: number;
+  include_database?: boolean;
+  database_type?: DatabaseType;
+  database_tier?: DatabaseTier;
 }): Promise<ComparisonResponse> {
   const searchParams = new URLSearchParams();
   if (params.compute_size) searchParams.set('compute_size', params.compute_size);
   if (params.storage_gb) searchParams.set('storage_gb', params.storage_gb.toString());
   if (params.storage_type) searchParams.set('storage_type', params.storage_type);
   if (params.hours_per_month) searchParams.set('hours_per_month', params.hours_per_month.toString());
+  if (params.include_database) searchParams.set('include_database', 'true');
+  if (params.database_type) searchParams.set('database_type', params.database_type);
+  if (params.database_tier) searchParams.set('database_tier', params.database_tier);
 
   const query = searchParams.toString();
   return fetchApi<ComparisonResponse>(`/compare${query ? `?${query}` : ''}`, {
@@ -84,20 +115,7 @@ export async function compareProviders(params: {
 // Helper to build full estimate request from form state
 export function buildEstimateRequest(
   provider: CloudProvider,
-  formState: {
-    includeCompute: boolean;
-    computeSize: ComputeSize;
-    computeQuantity: number;
-    computeHours: number;
-    includeStorage: boolean;
-    storageType: StorageType;
-    storageSize: number;
-    includeDatabase: boolean;
-    databaseType: string;
-    databaseHours: number;
-    dataTransferGb: number;
-    includeLoadBalancer: boolean;
-  }
+  formState: EstimatorFormState
 ): FullEstimateRequest {
   const request: FullEstimateRequest = {
     provider,
@@ -125,8 +143,10 @@ export function buildEstimateRequest(
   if (formState.includeDatabase) {
     request.database = {
       provider,
-      database_type: formState.databaseType as 'sql' | 'nosql' | 'cache',
-      hours_per_month: formState.databaseHours,
+      database_type: formState.databaseType,
+      tier: formState.databaseTier,
+      storage_gb: formState.databaseStorageGb,
+      backup_retention_days: formState.databaseBackupDays,
     };
   }
 

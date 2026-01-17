@@ -111,9 +111,6 @@ export default function Layout({ children }: LayoutProps) {
               <Cloud className="w-5 h-5" />
               <span className="font-display">CloudCost Estimator</span>
             </div>
-            <div className="text-sm text-slate-600">
-              Built with DevOps best practices • Containerized • CI/CD Pipeline
-            </div>
           </div>
         </div>
       </footer>
