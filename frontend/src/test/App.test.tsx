@@ -197,7 +197,7 @@ describe('App', () => {
     render(<App />);
     // "CloudCost" is split across two elements: "Cloud" and "Cost"
     // Use a function matcher to find text content across elements
-    expect(screen.getByText((content, element) => {
+    expect(screen.getByText((_content, element) => {
       return element?.tagName.toLowerCase() === 'span' && 
              element?.textContent === 'CloudCost';
     })).toBeInTheDocument();
