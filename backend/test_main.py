@@ -125,7 +125,7 @@ class TestFullEstimates:
         data = response.json()
         assert data["provider"] == "gcp"
         assert data["total_monthly_cost"] > 0
-        assert data["total_annual_cost"] == data["total_monthly_cost"] * 12
+        assert data["total_annual_cost"] == pytest.approx(data["total_monthly_cost"] * 12)
         # Should have compute, storage, database, database_storage, data transfer, load balancer
         assert len(data["breakdown"]) >= 5
 
