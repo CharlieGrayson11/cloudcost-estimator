@@ -17,16 +17,66 @@ const mockInstanceTypes = {
   aws: {
     small: { type: 't3.micro', vcpu: 2, memory: '1 GiB' },
     medium: { type: 't3.small', vcpu: 2, memory: '2 GiB' },
+    large: { type: 't3.medium', vcpu: 2, memory: '4 GiB' },
+    xlarge: { type: 't3.large', vcpu: 2, memory: '8 GiB' },
   },
   azure: {
     small: { type: 'Standard_B1s', vcpu: 1, memory: '1 GiB' },
     medium: { type: 'Standard_B2s', vcpu: 2, memory: '4 GiB' },
+    large: { type: 'Standard_B4ms', vcpu: 4, memory: '16 GiB' },
+    xlarge: { type: 'Standard_B8ms', vcpu: 8, memory: '32 GiB' },
   },
   gcp: {
     small: { type: 'e2-micro', vcpu: 0.25, memory: '1 GiB' },
     medium: { type: 'e2-small', vcpu: 0.5, memory: '2 GiB' },
+    large: { type: 'e2-medium', vcpu: 1, memory: '4 GiB' },
+    xlarge: { type: 'e2-standard-2', vcpu: 2, memory: '8 GiB' },
   },
 };
+
+const mockStorageServices = {
+  aws: {
+    standard: { name: 'Amazon S3 Standard', sku: 'S3-Standard' },
+    premium: { name: 'Amazon EBS gp3', sku: 'EBS-gp3' },
+    archive: { name: 'Amazon S3 Glacier Instant Retrieval', sku: 'S3-Glacier' },
+  },
+  azure: {
+    standard: { name: 'Azure Blob Storage (Hot)', sku: 'Hot-LRS' },
+    premium: { name: 'Azure Premium SSD', sku: 'Premium-SSD-LRS' },
+    archive: { name: 'Azure Blob Storage (Archive)', sku: 'Archive-LRS' },
+  },
+  gcp: {
+    standard: { name: 'Cloud Storage Standard', sku: 'standard' },
+    premium: { name: 'Persistent Disk SSD', sku: 'pd-ssd' },
+    archive: { name: 'Cloud Storage Archive', sku: 'archive' },
+  },
+};
+
+const mockDatabaseServices = {
+  aws: {
+    sql: { name: 'Amazon RDS for MySQL', sku: 'db.t3.micro' },
+    nosql: { name: 'Amazon DynamoDB', sku: 'on-demand' },
+    cache: { name: 'Amazon ElastiCache for Redis', sku: 'cache.t3.micro' },
+  },
+  azure: {
+    sql: { name: 'Azure SQL Database', sku: 'Basic-DTU' },
+    nosql: { name: 'Azure Cosmos DB', sku: 'serverless' },
+    cache: { name: 'Azure Cache for Redis', sku: 'Basic-C0' },
+  },
+  gcp: {
+    sql: { name: 'Cloud SQL for MySQL', sku: 'db-f1-micro' },
+    nosql: { name: 'Firestore', sku: 'native-mode' },
+    cache: { name: 'Memorystore for Redis', sku: 'basic-m1' },
+  },
+};
+
+// Setup default mocks before each test
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(api.getInstanceTypes).mockResolvedValue(mockInstanceTypes);
+  vi.mocked(api.getStorageServices).mockResolvedValue(mockStorageServices);
+  vi.mocked(api.getDatabaseServices).mockResolvedValue(mockDatabaseServices);
+});
 
 describe('App', () => {
   it('renders without crashing', () => {
@@ -43,14 +93,12 @@ describe('App', () => {
 });
 
 describe('EstimatorPage', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    vi.mocked(api.getInstanceTypes).mockResolvedValue(mockInstanceTypes);
-  });
-
-  it('renders the estimator form', () => {
+  it('renders the estimator form', async () => {
     renderWithRouter(<EstimatorPage />);
-    expect(screen.getByText('Cost Estimator')).toBeInTheDocument();
+    
+    await waitFor(() => {
+      expect(screen.getByText('Cost Estimator')).toBeInTheDocument();
+    });
   });
 
   it('displays results after successful estimation', async () => {
@@ -88,6 +136,11 @@ describe('EstimatorPage', () => {
 
     renderWithRouter(<EstimatorPage />);
 
+    // Wait for the form to load
+    await waitFor(() => {
+      expect(screen.getByText('Cost Estimator')).toBeInTheDocument();
+    });
+
     const calculateButton = screen.getByRole('button', { name: /calculate estimate/i });
     fireEvent.click(calculateButton);
 
@@ -98,13 +151,12 @@ describe('EstimatorPage', () => {
 });
 
 describe('ComparePage', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  it('renders the comparison form', () => {
+  it('renders the comparison form', async () => {
     renderWithRouter(<ComparePage />);
-    expect(screen.getByText('Compare Providers')).toBeInTheDocument();
+    
+    await waitFor(() => {
+      expect(screen.getByText('Compare Providers')).toBeInTheDocument();
+    });
   });
 
   it('displays comparison results with provider-specific service names', async () => {
@@ -205,6 +257,11 @@ describe('ComparePage', () => {
     vi.mocked(api.compareProviders).mockResolvedValue(mockResponse);
 
     renderWithRouter(<ComparePage />);
+
+    // Wait for the form to load
+    await waitFor(() => {
+      expect(screen.getByText('Compare Providers')).toBeInTheDocument();
+    });
 
     const compareButton = screen.getByRole('button', { name: /compare providers/i });
     fireEvent.click(compareButton);

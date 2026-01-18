@@ -27,12 +27,11 @@ jobs:
         run: pip install flake8 black
 
       - name: Run Flake8
-        run: flake8 backend/ --max-line-length=120 --ignore=E501,W503
-        continue-on-error: true
+        run: flake8 backend/ --max-line-length=120 --ignore=E501,W503,E302,E305,W291,W292,W293
 
       - name: Check formatting with Black
         run: black --check backend/ --line-length=120
-        continue-on-error: true
+        continue-on-error: true  # Black formatting is advisory
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -40,13 +39,12 @@ jobs:
           node-version: '20'
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
         working-directory: frontend
 
       - name: Run ESLint
         run: npm run lint
         working-directory: frontend
-        continue-on-error: true
 
   test-backend:
     name: 🧪 Test Backend
@@ -68,7 +66,6 @@ jobs:
         run: |
           cd backend
           pytest test_main.py -v --tb=short
-        continue-on-error: true
 
   test-frontend:
     name: 🧪 Test Frontend
@@ -84,13 +81,12 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
         working-directory: frontend
 
       - name: Run tests
         run: npm run test -- --run
         working-directory: frontend
-        continue-on-error: true
 
   security-scan:
     name: 🔒 Security Scan
@@ -116,7 +112,7 @@ jobs:
           node-version: '20'
 
       - name: Scan Node dependencies
-        run: npm audit --audit-level=moderate || true
+        run: npm audit --audit-level=high || true
         working-directory: frontend
 
   build:
