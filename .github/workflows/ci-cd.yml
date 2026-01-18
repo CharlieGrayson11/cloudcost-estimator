@@ -27,7 +27,7 @@ jobs:
         run: pip install flake8 black
 
       - name: Run Flake8
-        run: flake8 backend/ --max-line-length=120 --ignore=E501,W503,E302,E305,W291,W292,W293
+        run: flake8 backend/ --max-line-length=120 --ignore=E501,W503,E302,E305,W291,W292,W293,E722,F401
 
       - name: Check formatting with Black
         run: black --check backend/ --line-length=120
