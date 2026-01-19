@@ -31,7 +31,6 @@ jobs:
 
       - name: Check formatting with Black
         run: black --check backend/ --line-length=120
-        continue-on-error: true  # Black formatting is advisory
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -104,7 +103,7 @@ jobs:
       - name: Scan Python dependencies
         run: |
           pip install safety
-          safety check -r backend/requirements.txt || true
+          safety check -r backend/requirements.txt
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -112,7 +111,7 @@ jobs:
           node-version: '20'
 
       - name: Scan Node dependencies
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
         working-directory: frontend
 
   build:
