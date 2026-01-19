@@ -4,7 +4,7 @@ Real-time cloud pricing using official provider APIs
 
 PRICING DATA SOURCES (ALL LIVE APIs):
 - Azure: Azure Retail Prices API (no auth required)
-- AWS: AWS Price List Bulk API (no auth required)  
+- AWS: AWS Price List Bulk API (no auth required)
 - GCP: Cloud Billing Catalog API (requires API key)
 
 REAL SERVICE NAMES DISPLAYED:
@@ -31,7 +31,7 @@ GCP_API_KEY = os.getenv("GCP_API_KEY", "")
 app = FastAPI(
     title="CloudCost Estimator API",
     description="Real-time cloud pricing using official AWS, Azure, and GCP pricing APIs",
-    version="3.3.0"
+    version="3.3.0",
 )
 
 app.add_middleware(
@@ -46,6 +46,7 @@ app.add_middleware(
 # ============================================
 # ENUMS
 # ============================================
+
 
 class CloudProvider(str, Enum):
     AWS = "aws"
@@ -144,6 +145,7 @@ DATABASE_SERVICE_MAPPING = {
 # REQUEST/RESPONSE MODELS
 # ============================================
 
+
 class ComputeEstimateRequest(BaseModel):
     provider: CloudProvider
     size: ComputeSize
@@ -211,19 +213,25 @@ class HealthResponse(BaseModel):
 # PRICING SERVICE
 # ============================================
 
+
 class PricingService:
     def __init__(self):
         self.cache: Dict[str, Any] = {}
         self.cache_expiry: Dict[str, datetime] = {}
         self.cache_duration = timedelta(hours=1)
-        
+
         self.fallback_prices = {
             CloudProvider.AWS: {
                 "compute": {"t3.micro": 0.0104, "t3.small": 0.0208, "t3.medium": 0.0416, "t3.large": 0.0832},
                 "storage": {StorageType.STANDARD: 0.023, StorageType.PREMIUM: 0.08, StorageType.ARCHIVE: 0.004},
             },
             CloudProvider.AZURE: {
-                "compute": {"Standard_B1s": 0.0104, "Standard_B2s": 0.0416, "Standard_B4ms": 0.166, "Standard_B8ms": 0.333},
+                "compute": {
+                    "Standard_B1s": 0.0104,
+                    "Standard_B2s": 0.0416,
+                    "Standard_B4ms": 0.166,
+                    "Standard_B8ms": 0.333,
+                },
                 "storage": {StorageType.STANDARD: 0.0184, StorageType.PREMIUM: 0.15, StorageType.ARCHIVE: 0.00099},
             },
             CloudProvider.GCP: {
@@ -231,50 +239,74 @@ class PricingService:
                 "storage": {StorageType.STANDARD: 0.020, StorageType.PREMIUM: 0.170, StorageType.ARCHIVE: 0.0012},
             },
         }
-        
+
         self.database_prices = {
             CloudProvider.AWS: {
-                DatabaseType.SQL: {DatabaseTier.BASIC: 12.41, DatabaseTier.STANDARD: 49.64, DatabaseTier.PREMIUM: 198.56},
-                DatabaseType.NOSQL: {DatabaseTier.BASIC: 25.0, DatabaseTier.STANDARD: 75.0, DatabaseTier.PREMIUM: 250.0},
-                DatabaseType.CACHE: {DatabaseTier.BASIC: 12.41, DatabaseTier.STANDARD: 49.64, DatabaseTier.PREMIUM: 198.56},
+                DatabaseType.SQL: {
+                    DatabaseTier.BASIC: 12.41,
+                    DatabaseTier.STANDARD: 49.64,
+                    DatabaseTier.PREMIUM: 198.56,
+                },
+                DatabaseType.NOSQL: {
+                    DatabaseTier.BASIC: 25.0,
+                    DatabaseTier.STANDARD: 75.0,
+                    DatabaseTier.PREMIUM: 250.0,
+                },
+                DatabaseType.CACHE: {
+                    DatabaseTier.BASIC: 12.41,
+                    DatabaseTier.STANDARD: 49.64,
+                    DatabaseTier.PREMIUM: 198.56,
+                },
             },
             CloudProvider.AZURE: {
                 DatabaseType.SQL: {DatabaseTier.BASIC: 4.90, DatabaseTier.STANDARD: 15.0, DatabaseTier.PREMIUM: 465.0},
-                DatabaseType.NOSQL: {DatabaseTier.BASIC: 23.36, DatabaseTier.STANDARD: 58.40, DatabaseTier.PREMIUM: 175.20},
-                DatabaseType.CACHE: {DatabaseTier.BASIC: 16.0, DatabaseTier.STANDARD: 50.0, DatabaseTier.PREMIUM: 200.0},
+                DatabaseType.NOSQL: {
+                    DatabaseTier.BASIC: 23.36,
+                    DatabaseTier.STANDARD: 58.40,
+                    DatabaseTier.PREMIUM: 175.20,
+                },
+                DatabaseType.CACHE: {
+                    DatabaseTier.BASIC: 16.0,
+                    DatabaseTier.STANDARD: 50.0,
+                    DatabaseTier.PREMIUM: 200.0,
+                },
             },
             CloudProvider.GCP: {
                 DatabaseType.SQL: {DatabaseTier.BASIC: 7.67, DatabaseTier.STANDARD: 51.0, DatabaseTier.PREMIUM: 340.0},
                 DatabaseType.NOSQL: {DatabaseTier.BASIC: 0.06, DatabaseTier.STANDARD: 0.18, DatabaseTier.PREMIUM: 0.36},
-                DatabaseType.CACHE: {DatabaseTier.BASIC: 12.0, DatabaseTier.STANDARD: 37.0, DatabaseTier.PREMIUM: 150.0},
+                DatabaseType.CACHE: {
+                    DatabaseTier.BASIC: 12.0,
+                    DatabaseTier.STANDARD: 37.0,
+                    DatabaseTier.PREMIUM: 150.0,
+                },
             },
         }
-    
+
     def _is_cache_valid(self, key: str) -> bool:
         return key in self.cache_expiry and datetime.now() < self.cache_expiry[key]
-    
+
     def _set_cache(self, key: str, data: Any):
         self.cache[key] = data
         self.cache_expiry[key] = datetime.now() + self.cache_duration
-    
+
     # Azure API
     async def fetch_azure_vm_price(self, sku_name: str, region: str = "uksouth") -> tuple[float, str]:
         cache_key = f"azure_vm_{sku_name}_{region}"
         if self._is_cache_valid(cache_key):
             return self.cache[cache_key], "Azure Retail Prices API (cached)"
-        
+
         api_url = "https://prices.azure.com/api/retail/prices"
         params = {
             "$filter": f"serviceName eq 'Virtual Machines' and armSkuName eq '{sku_name}' and armRegionName eq '{region}' and priceType eq 'Consumption'",
-            "$top": 10
+            "$top": 10,
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(api_url, params=params)
                 response.raise_for_status()
                 data = response.json()
-                
+
                 if data.get("Items"):
                     for item in data["Items"]:
                         if "Windows" not in item.get("productName", ""):
@@ -284,32 +316,32 @@ class PricingService:
                             return price, "Azure Retail Prices API (live)"
         except Exception as e:
             logger.warning(f"Azure API error: {e}")
-        
+
         return self.fallback_prices[CloudProvider.AZURE]["compute"].get(sku_name, 0.05), "Azure (fallback)"
-    
+
     async def fetch_azure_storage_price(self, storage_type: StorageType, region: str = "uksouth") -> tuple[float, str]:
         cache_key = f"azure_storage_{storage_type}_{region}"
         if self._is_cache_valid(cache_key):
             return self.cache[cache_key], "Azure Retail Prices API (cached)"
-        
+
         sku_map = {
             StorageType.STANDARD: ("Hot LRS", "Hot LRS Data Stored"),
             StorageType.ARCHIVE: ("Archive LRS", "Archive LRS Data Stored"),
             StorageType.PREMIUM: ("P10 LRS", None),
         }
         sku_name, meter = sku_map[storage_type]
-        
+
         api_url = "https://prices.azure.com/api/retail/prices"
         filter_str = f"serviceName eq 'Storage' and armRegionName eq '{region}' and skuName eq '{sku_name}'"
         if meter:
             filter_str += f" and meterName eq '{meter}'"
-        
+
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 response = await client.get(api_url, params={"$filter": filter_str, "$top": 5})
                 response.raise_for_status()
                 data = response.json()
-                
+
                 if data.get("Items"):
                     price = data["Items"][0]["retailPrice"]
                     if 0.0001 < price < 1:
@@ -317,15 +349,15 @@ class PricingService:
                         return price, "Azure Retail Prices API (live)"
         except Exception as e:
             logger.warning(f"Azure Storage API error: {e}")
-        
+
         return self.fallback_prices[CloudProvider.AZURE]["storage"][storage_type], "Azure (fallback)"
-    
+
     # AWS API
     async def fetch_aws_price(self, instance_type: str) -> tuple[float, str]:
         cache_key = f"aws_ec2_{instance_type}"
         if self._is_cache_valid(cache_key):
             return self.cache[cache_key], "AWS Price List API (cached)"
-        
+
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get("https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json")
@@ -335,49 +367,52 @@ class PricingService:
                     return price, "AWS Price List API (verified)"
         except Exception as e:
             logger.warning(f"AWS API error: {e}")
-        
+
         return self.fallback_prices[CloudProvider.AWS]["compute"][instance_type], "AWS Pricing Page"
-    
+
     async def fetch_aws_storage_price(self, storage_type: StorageType) -> tuple[float, str]:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get("https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json")
                 if resp.status_code == 200:
-                    return self.fallback_prices[CloudProvider.AWS]["storage"][storage_type], "AWS Price List API (verified)"
+                    return (
+                        self.fallback_prices[CloudProvider.AWS]["storage"][storage_type],
+                        "AWS Price List API (verified)",
+                    )
         except:
             pass
         return self.fallback_prices[CloudProvider.AWS]["storage"][storage_type], "AWS Pricing Page"
-    
+
     # GCP API
     async def fetch_gcp_compute_price(self, instance_type: str) -> tuple[float, str]:
         cache_key = f"gcp_compute_{instance_type}"
         if self._is_cache_valid(cache_key):
             return self.cache[cache_key], "GCP Cloud Billing API (cached)"
-        
+
         if not GCP_API_KEY:
             return self.fallback_prices[CloudProvider.GCP]["compute"][instance_type], "GCP (no API key)"
-        
+
         try:
             services_url = f"https://cloudbilling.googleapis.com/v1/services?key={GCP_API_KEY}"
-            
+
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(services_url)
                 resp.raise_for_status()
                 services = resp.json().get("services", [])
-                
+
                 compute_service = None
                 for service in services:
                     if "Compute Engine" in service.get("displayName", ""):
                         compute_service = service
                         break
-                
+
                 if compute_service:
                     service_name = compute_service["name"]
                     skus_url = f"https://cloudbilling.googleapis.com/v1/{service_name}/skus?key={GCP_API_KEY}"
                     resp = await client.get(skus_url)
                     resp.raise_for_status()
                     skus_data = resp.json()
-                    
+
                     for sku in skus_data.get("skus", []):
                         description = sku.get("description", "").lower()
                         if instance_type.lower() in description and "preemptible" not in description:
@@ -393,45 +428,45 @@ class PricingService:
                                     return price, "GCP Cloud Billing API (live)"
         except Exception as e:
             logger.warning(f"GCP API error: {e}")
-        
+
         return self.fallback_prices[CloudProvider.GCP]["compute"][instance_type], "GCP Cloud Billing API (fallback)"
-    
+
     async def fetch_gcp_storage_price(self, storage_type: StorageType) -> tuple[float, str]:
         cache_key = f"gcp_storage_{storage_type}"
         if self._is_cache_valid(cache_key):
             return self.cache[cache_key], "GCP Cloud Billing API (cached)"
-        
+
         if not GCP_API_KEY:
             return self.fallback_prices[CloudProvider.GCP]["storage"][storage_type], "GCP (no API key)"
-        
+
         try:
             services_url = f"https://cloudbilling.googleapis.com/v1/services?key={GCP_API_KEY}"
-            
+
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(services_url)
                 resp.raise_for_status()
                 services = resp.json().get("services", [])
-                
+
                 storage_service = None
                 for service in services:
                     if "Cloud Storage" in service.get("displayName", ""):
                         storage_service = service
                         break
-                
+
                 if storage_service:
                     service_name = storage_service["name"]
                     skus_url = f"https://cloudbilling.googleapis.com/v1/{service_name}/skus?key={GCP_API_KEY}"
                     resp = await client.get(skus_url)
                     resp.raise_for_status()
                     skus_data = resp.json()
-                    
+
                     type_keywords = {
                         StorageType.STANDARD: "standard storage",
                         StorageType.PREMIUM: "regional",
                         StorageType.ARCHIVE: "archive storage",
                     }
                     keyword = type_keywords[storage_type]
-                    
+
                     for sku in skus_data.get("skus", []):
                         description = sku.get("description", "").lower()
                         if keyword in description and "retrieval" not in description:
@@ -447,80 +482,84 @@ class PricingService:
                                     return price, "GCP Cloud Billing API (live)"
         except Exception as e:
             logger.warning(f"GCP Storage API error: {e}")
-        
+
         return self.fallback_prices[CloudProvider.GCP]["storage"][storage_type], "GCP Cloud Billing API (fallback)"
-    
+
     # Unified methods
     async def get_compute_price(self, provider: CloudProvider, size: ComputeSize) -> tuple[float, str, dict]:
         instance_info = INSTANCE_TYPE_MAPPING[provider][size]
         instance_type = instance_info["type"]
-        
+
         if provider == CloudProvider.AZURE:
             price, source = await self.fetch_azure_vm_price(instance_type)
         elif provider == CloudProvider.AWS:
             price, source = await self.fetch_aws_price(instance_type)
         else:
             price, source = await self.fetch_gcp_compute_price(instance_type)
-        
+
         return price, source, instance_info
-    
+
     async def get_storage_price(self, provider: CloudProvider, storage_type: StorageType) -> tuple[float, str, dict]:
         storage_info = STORAGE_SERVICE_MAPPING[provider][storage_type]
-        
+
         if provider == CloudProvider.AZURE:
             price, source = await self.fetch_azure_storage_price(storage_type)
         elif provider == CloudProvider.AWS:
             price, source = await self.fetch_aws_storage_price(storage_type)
         else:
             price, source = await self.fetch_gcp_storage_price(storage_type)
-        
+
         return price, source, storage_info
-    
-    async def get_database_price(self, provider: CloudProvider, db_type: DatabaseType, tier: DatabaseTier) -> tuple[float, str, dict]:
+
+    async def get_database_price(
+        self, provider: CloudProvider, db_type: DatabaseType, tier: DatabaseTier
+    ) -> tuple[float, str, dict]:
         db_info = DATABASE_SERVICE_MAPPING[provider][db_type]
         price = self.database_prices[provider][db_type][tier]
         source = f"{provider.value.upper()} Database Pricing"
         return price, source, db_info
-    
+
     async def get_database_storage_price(self, provider: CloudProvider) -> tuple[float, str]:
         prices = {CloudProvider.AWS: 0.115, CloudProvider.AZURE: 0.115, CloudProvider.GCP: 0.17}
         return prices[provider], f"{provider.value.upper()} Pricing"
-    
+
     async def get_data_transfer_price(self, provider: CloudProvider) -> tuple[float, str]:
         prices = {CloudProvider.AWS: 0.09, CloudProvider.AZURE: 0.087, CloudProvider.GCP: 0.12}
         return prices[provider], f"{provider.value.upper()} Pricing"
-    
+
     async def get_load_balancer_price(self, provider: CloudProvider) -> tuple[float, str]:
         prices = {CloudProvider.AWS: 0.0225, CloudProvider.AZURE: 0.025, CloudProvider.GCP: 0.025}
         return prices[provider], f"{provider.value.upper()} Pricing"
-    
+
     async def check_api_status(self) -> Dict[str, str]:
         status = {}
-        
+
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get("https://prices.azure.com/api/retail/prices?$top=1")
                 status["azure"] = "live" if resp.status_code == 200 else "degraded"
         except:
             status["azure"] = "unavailable"
-        
+
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get("https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/index.json")
                 status["aws"] = "live" if resp.status_code == 200 else "degraded"
         except:
             status["aws"] = "unavailable"
-        
+
         if GCP_API_KEY:
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get(f"https://cloudbilling.googleapis.com/v1/services?key={GCP_API_KEY}&pageSize=1")
+                    resp = await client.get(
+                        f"https://cloudbilling.googleapis.com/v1/services?key={GCP_API_KEY}&pageSize=1"
+                    )
                     status["gcp"] = "live" if resp.status_code == 200 else "degraded"
             except:
                 status["gcp"] = "unavailable"
         else:
             status["gcp"] = "no API key"
-        
+
         return status
 
 
@@ -537,6 +576,7 @@ PROVIDER_INFO = {
 # API ENDPOINTS
 # ============================================
 
+
 @app.get("/")
 async def root():
     return {
@@ -546,17 +586,15 @@ async def root():
         "pricing_sources": {
             "azure": "Azure Retail Prices API (live)",
             "aws": "AWS Price List Bulk API (live)",
-            "gcp": "GCP Cloud Billing Catalog API (live)" if GCP_API_KEY else "GCP (API key required)"
-        }
+            "gcp": "GCP Cloud Billing Catalog API (live)" if GCP_API_KEY else "GCP (API key required)",
+        },
     }
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(
-        status="healthy",
-        version="3.3.0",
-        pricing_api_status=await pricing_service.check_api_status()
+        status="healthy", version="3.3.0", pricing_api_status=await pricing_service.check_api_status()
     )
 
 
@@ -585,102 +623,120 @@ async def estimate_full(request: FullEstimateRequest):
     breakdown = []
     total = 0.0
     sources = set()
-    
+
     # Compute
     if request.compute:
-        hourly_rate, source, instance_info = await pricing_service.get_compute_price(request.provider, request.compute.size)
+        hourly_rate, source, instance_info = await pricing_service.get_compute_price(
+            request.provider, request.compute.size
+        )
         cost = hourly_rate * request.compute.hours_per_month * request.compute.quantity
-        
-        breakdown.append(CostBreakdown(
-            item=f"{instance_info['type']} x{request.compute.quantity}",
-            unit_cost=hourly_rate,
-            quantity=request.compute.hours_per_month * request.compute.quantity,
-            monthly_cost=round(cost, 2),
-            pricing_source=source,
-            service_name=f"{instance_info['type']} ({instance_info['vcpu']} vCPU, {instance_info['memory']})",
-            resource_type="compute"
-        ))
+
+        breakdown.append(
+            CostBreakdown(
+                item=f"{instance_info['type']} x{request.compute.quantity}",
+                unit_cost=hourly_rate,
+                quantity=request.compute.hours_per_month * request.compute.quantity,
+                monthly_cost=round(cost, 2),
+                pricing_source=source,
+                service_name=f"{instance_info['type']} ({instance_info['vcpu']} vCPU, {instance_info['memory']})",
+                resource_type="compute",
+            )
+        )
         total += cost
         sources.add(source)
-    
+
     # Storage
     if request.storage:
-        rate, source, storage_info = await pricing_service.get_storage_price(request.provider, request.storage.storage_type)
+        rate, source, storage_info = await pricing_service.get_storage_price(
+            request.provider, request.storage.storage_type
+        )
         cost = rate * request.storage.size_gb
-        
-        breakdown.append(CostBreakdown(
-            item=storage_info["name"],
-            unit_cost=rate,
-            quantity=request.storage.size_gb,
-            monthly_cost=round(cost, 2),
-            pricing_source=source,
-            service_name=storage_info["name"],
-            resource_type="storage"
-        ))
+
+        breakdown.append(
+            CostBreakdown(
+                item=storage_info["name"],
+                unit_cost=rate,
+                quantity=request.storage.size_gb,
+                monthly_cost=round(cost, 2),
+                pricing_source=source,
+                service_name=storage_info["name"],
+                resource_type="storage",
+            )
+        )
         total += cost
         sources.add(source)
-    
+
     # Database
     if request.database:
-        base, source, db_info = await pricing_service.get_database_price(request.provider, request.database.database_type, request.database.tier)
-        
-        breakdown.append(CostBreakdown(
-            item=f"{db_info['name']} ({request.database.tier.value})",
-            unit_cost=base,
-            quantity=1,
-            monthly_cost=round(base, 2),
-            pricing_source=source,
-            service_name=db_info["name"],
-            resource_type="database"
-        ))
+        base, source, db_info = await pricing_service.get_database_price(
+            request.provider, request.database.database_type, request.database.tier
+        )
+
+        breakdown.append(
+            CostBreakdown(
+                item=f"{db_info['name']} ({request.database.tier.value})",
+                unit_cost=base,
+                quantity=1,
+                monthly_cost=round(base, 2),
+                pricing_source=source,
+                service_name=db_info["name"],
+                resource_type="database",
+            )
+        )
         total += base
-        
+
         storage_price, src = await pricing_service.get_database_storage_price(request.provider)
         db_cost = storage_price * request.database.storage_gb
-        
-        breakdown.append(CostBreakdown(
-            item=f"Database Storage ({request.database.storage_gb} GB)",
-            unit_cost=storage_price,
-            quantity=request.database.storage_gb,
-            monthly_cost=round(db_cost, 2),
-            pricing_source=src,
-            resource_type="database_storage"
-        ))
+
+        breakdown.append(
+            CostBreakdown(
+                item=f"Database Storage ({request.database.storage_gb} GB)",
+                unit_cost=storage_price,
+                quantity=request.database.storage_gb,
+                monthly_cost=round(db_cost, 2),
+                pricing_source=src,
+                resource_type="database_storage",
+            )
+        )
         total += db_cost
         sources.add(source)
-    
+
     # Data Transfer
     if request.data_transfer_gb > 0:
         rate, source = await pricing_service.get_data_transfer_price(request.provider)
         cost = rate * request.data_transfer_gb
-        
-        breakdown.append(CostBreakdown(
-            item="Data Transfer Out",
-            unit_cost=rate,
-            quantity=request.data_transfer_gb,
-            monthly_cost=round(cost, 2),
-            pricing_source=source,
-            resource_type="networking"
-        ))
+
+        breakdown.append(
+            CostBreakdown(
+                item="Data Transfer Out",
+                unit_cost=rate,
+                quantity=request.data_transfer_gb,
+                monthly_cost=round(cost, 2),
+                pricing_source=source,
+                resource_type="networking",
+            )
+        )
         total += cost
         sources.add(source)
-    
+
     # Load Balancer
     if request.include_load_balancer:
         rate, source = await pricing_service.get_load_balancer_price(request.provider)
         cost = rate * 730
-        
-        breakdown.append(CostBreakdown(
-            item="Load Balancer",
-            unit_cost=rate,
-            quantity=730,
-            monthly_cost=round(cost, 2),
-            pricing_source=source,
-            resource_type="networking"
-        ))
+
+        breakdown.append(
+            CostBreakdown(
+                item="Load Balancer",
+                unit_cost=rate,
+                quantity=730,
+                monthly_cost=round(cost, 2),
+                pricing_source=source,
+                resource_type="networking",
+            )
+        )
         total += cost
         sources.add(source)
-    
+
     return EstimateResponse(
         provider=request.provider.value,
         provider_display_name=PROVIDER_INFO[request.provider]["name"],
@@ -688,7 +744,7 @@ async def estimate_full(request: FullEstimateRequest):
         total_monthly_cost=round(total, 2),
         total_annual_cost=round(total * 12, 2),
         last_updated=datetime.now().isoformat(),
-        pricing_note=f"Sources: {', '.join(sources)}" if sources else "No resources selected"
+        pricing_note=f"Sources: {', '.join(sources)}" if sources else "No resources selected",
     )
 
 
@@ -704,21 +760,14 @@ async def compare_providers(
 ):
     """Compare costs across all providers with optional database."""
     estimates = []
-    
+
     for provider in CloudProvider:
         # Build request for each provider
         compute_request = ComputeEstimateRequest(
-            provider=provider,
-            size=compute_size,
-            hours_per_month=hours_per_month,
-            quantity=1
+            provider=provider, size=compute_size, hours_per_month=hours_per_month, quantity=1
         )
-        storage_request = StorageEstimateRequest(
-            provider=provider,
-            storage_type=storage_type,
-            size_gb=storage_gb
-        )
-        
+        storage_request = StorageEstimateRequest(provider=provider, storage_type=storage_type, size_gb=storage_gb)
+
         # Optionally include database
         database_request = None
         if include_database and database_type and database_tier:
@@ -727,26 +776,24 @@ async def compare_providers(
                 database_type=database_type,
                 tier=database_tier,
                 storage_gb=20,  # Default 20GB for comparison
-                backup_retention_days=7
+                backup_retention_days=7,
             )
-        
+
         full_request = FullEstimateRequest(
-            provider=provider,
-            compute=compute_request,
-            storage=storage_request,
-            database=database_request
+            provider=provider, compute=compute_request, storage=storage_request, database=database_request
         )
-        
+
         estimates.append(await estimate_full(full_request))
-    
+
     sorted_est = sorted(estimates, key=lambda x: x.total_monthly_cost)
     return ComparisonResponse(
         estimates=estimates,
         cheapest_provider=sorted_est[0].provider,
-        potential_savings=round(sorted_est[-1].total_monthly_cost - sorted_est[0].total_monthly_cost, 2)
+        potential_savings=round(sorted_est[-1].total_monthly_cost - sorted_est[0].total_monthly_cost, 2),
     )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
