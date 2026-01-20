@@ -208,7 +208,7 @@ export default function Layout({ children }: LayoutProps) {
                 <span>API:</span>
                 <span className={getStatusColor(apiStatus.status)}>
                   {apiStatus.status === 'loading' 
-                    ? 'Checking...' 
+                    ? 'Checking... ' 
                     : apiStatus.status.charAt(0).toUpperCase() + apiStatus.status.slice(1)}
                 </span>
               </div>
